@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Send, Loader2, Sparkles, ExternalLink, AlertCircle, BookOpen, Pencil, RotateCcw, X, Check } from 'lucide-react'
+import { Send, Loader2, Sparkles, ExternalLink, AlertCircle, BookOpen, Pencil, RotateCcw, X, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -29,6 +29,7 @@ export function AskAI({ onSelectConversation }: AskAIProps) {
   const [editedPrompt, setEditedPrompt] = useState(systemPrompt)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [selectedText, setSelectedText] = useState('')
+  const [showSources, setShowSources] = useState(true)
   const responseRef = useRef<HTMLDivElement>(null)
 
   const handleSaveSelection = (text: string) => {
@@ -263,7 +264,7 @@ export function AskAI({ onSelectConversation }: AskAIProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="prose prose-invert prose-sm max-w-none">
-                    <ResponseRenderer content={response} />
+                    <ResponseRenderer content={response} sources={sources} onSelectConversation={onSelectConversation} />
                   </div>
                 </CardContent>
               </Card>
@@ -290,31 +291,61 @@ export function AskAI({ onSelectConversation }: AskAIProps) {
 
         {/* Sources sidebar */}
         {sources.length > 0 && (
-          <div className="w-72 border-l overflow-y-auto p-4">
-            <h3 className="font-semibold text-sm mb-3">Källor ({sources.length})</h3>
-            <div className="space-y-2">
-              {sources.map((source, index) => (
-                <Card 
-                  key={source.id}
-                  className="cursor-pointer hover:bg-accent/50 transition-colors"
-                  onClick={() => onSelectConversation(source.id)}
+          <div className={`border-l overflow-y-auto transition-all duration-300 ${showSources ? 'w-64' : 'w-10'}`}>
+            {showSources ? (
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-sm">Källor ({sources.length})</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => setShowSources(false)}
+                    title="Dölj källor"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {sources.map((source, index) => (
+                    <Card 
+                      key={source.id}
+                      className="cursor-pointer hover:bg-accent/50 transition-colors"
+                      onClick={() => onSelectConversation(source.id)}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium line-clamp-2">
+                              {index + 1}. {source.title}
+                            </p>
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                              {source.snippet.slice(0, 100)}...
+                            </p>
+                          </div>
+                          <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0 mt-1" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="p-2 flex flex-col items-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setShowSources(true)}
+                  title="Visa källor"
                 >
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium line-clamp-2">
-                          {index + 1}. {source.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                          {source.snippet.slice(0, 100)}...
-                        </p>
-                      </div>
-                      <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0 mt-1" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-muted-foreground mt-2 writing-mode-vertical">
+                  {sources.length}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -322,58 +353,159 @@ export function AskAI({ onSelectConversation }: AskAIProps) {
   )
 }
 
-function ResponseRenderer({ content }: { content: string }) {
-  // Simple markdown rendering
+interface ResponseRendererProps {
+  content: string
+  sources: AISource[]
+  onSelectConversation: (id: string) => void
+}
+
+function ResponseRenderer({ content, sources, onSelectConversation }: ResponseRendererProps) {
   const lines = content.split('\n')
   
+  // Create a map of source index to source for quick lookup
+  const sourceMap = new Map(sources.map((s, i) => [i + 1, s]))
+  
   return (
-    <>
+    <div className="space-y-3">
       {lines.map((line, index) => {
-        // Headers
-        if (line.startsWith('### ')) {
-          return <h3 key={index} className="text-base font-semibold mt-4 mb-2">{line.slice(4)}</h3>
-        }
-        if (line.startsWith('## ')) {
-          return <h2 key={index} className="text-lg font-semibold mt-4 mb-2">{line.slice(3)}</h2>
-        }
-        if (line.startsWith('# ')) {
-          return <h1 key={index} className="text-xl font-bold mt-4 mb-2">{line.slice(2)}</h1>
+        const trimmed = line.trim()
+        
+        // Skip empty lines
+        if (!trimmed) {
+          return <div key={index} className="h-1" />
         }
         
-        // List items
-        if (line.startsWith('- ') || line.startsWith('* ')) {
-          return <li key={index} className="ml-4">{renderInlineMarkdown(line.slice(2))}</li>
+        // Main headers (## or ###)
+        if (trimmed.startsWith('### ')) {
+          return (
+            <h3 key={index} className="text-base font-semibold text-purple-300 mt-5 mb-2 border-b border-purple-500/20 pb-1">
+              {cleanText(trimmed.slice(4))}
+            </h3>
+          )
         }
-        if (/^\d+\. /.test(line)) {
-          return <li key={index} className="ml-4 list-decimal">{renderInlineMarkdown(line.replace(/^\d+\. /, ''))}</li>
+        if (trimmed.startsWith('## ')) {
+          return (
+            <h2 key={index} className="text-lg font-semibold text-purple-300 mt-5 mb-2 border-b border-purple-500/20 pb-1">
+              {cleanText(trimmed.slice(3))}
+            </h2>
+          )
+        }
+        if (trimmed.startsWith('# ')) {
+          return (
+            <h1 key={index} className="text-xl font-bold text-purple-300 mt-5 mb-3 border-b border-purple-500/30 pb-2">
+              {cleanText(trimmed.slice(2))}
+            </h1>
+          )
         }
         
-        // Empty line
-        if (!line.trim()) {
-          return <div key={index} className="h-2" />
+        // Numbered headers like "1. Title" or "2. Title"
+        const numberedMatch = trimmed.match(/^(\d+)\.\s+(.+)$/)
+        if (numberedMatch && !trimmed.includes('"') && trimmed.length < 80) {
+          return (
+            <h3 key={index} className="text-base font-semibold text-blue-300 mt-4 mb-2">
+              {numberedMatch[1]}. {cleanText(numberedMatch[2])}
+            </h3>
+          )
+        }
+        
+        // Quote lines starting with > or "
+        if (trimmed.startsWith('>') || trimmed.startsWith('"')) {
+          const quoteText = trimmed.startsWith('>') ? trimmed.slice(1).trim() : trimmed
+          return (
+            <blockquote key={index} className="border-l-2 border-purple-500/50 pl-4 py-1 italic text-muted-foreground bg-purple-500/5 rounded-r">
+              {cleanText(quoteText)}
+            </blockquote>
+          )
+        }
+        
+        // List items with - or *
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          return (
+            <div key={index} className="flex gap-2 ml-2">
+              <span className="text-purple-400 mt-1">•</span>
+              <span>{cleanText(trimmed.slice(2))}</span>
+            </div>
+          )
+        }
+        
+        // Source references like (Lester Levenson, från konversation 4 [ID:xxx])
+        if (trimmed.startsWith('(') && trimmed.endsWith(')') && trimmed.includes('konversation')) {
+          // Try to extract ID from [ID:xxx] format first
+          const idMatch = trimmed.match(/\[ID:([^\]]+)\]/i)
+          let conversationId: string | null = null
+          
+          if (idMatch) {
+            conversationId = idMatch[1]
+          } else {
+            // Fallback to conversation number
+            const convMatch = trimmed.match(/konversation\s*(\d+)/i)
+            if (convMatch) {
+              const convNum = parseInt(convMatch[1])
+              const source = sourceMap.get(convNum)
+              if (source) {
+                conversationId = source.id
+              }
+            }
+          }
+          
+          // Clean display text (remove the [ID:xxx] part)
+          const displayText = trimmed.replace(/\s*\[ID:[^\]]+\]/gi, '')
+          
+          if (conversationId) {
+            return (
+              <button
+                key={index}
+                onClick={() => onSelectConversation(conversationId!)}
+                className="text-xs text-purple-400 hover:text-purple-300 hover:underline ml-4 -mt-2 mb-2 cursor-pointer text-left"
+              >
+                {displayText} →
+              </button>
+            )
+          }
+          return (
+            <p key={index} className="text-xs text-muted-foreground ml-4 -mt-2 mb-2">
+              {displayText}
+            </p>
+          )
         }
         
         // Regular paragraph
-        return <p key={index} className="mb-2">{renderInlineMarkdown(line)}</p>
+        return (
+          <p key={index} className="leading-relaxed">
+            {cleanText(trimmed)}
+          </p>
+        )
       })}
-    </>
+    </div>
   )
 }
 
-function renderInlineMarkdown(text: string): React.ReactNode {
-  // Handle bold
-  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+function cleanText(text: string): React.ReactNode {
+  // Remove markdown formatting and render clean text
+  let cleaned = text
+    // Remove ** bold markers but keep the text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    // Remove * italic markers but keep the text  
+    .replace(/\*([^*]+)\*/g, '$1')
+    // Remove standalone * at start of lines
+    .replace(/^\*\s*/, '')
+    // Remove ` code markers
+    .replace(/`([^`]+)`/g, '$1')
+    // Clean up multiple spaces
+    .replace(/\s+/g, ' ')
+    .trim()
+  
+  // Now render with proper formatting - bold text in quotes
+  const parts = cleaned.split(/("[^"]+")/g)
+  
   return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>
+    if (part.startsWith('"') && part.endsWith('"')) {
+      return (
+        <span key={i} className="font-medium text-purple-200">
+          {part}
+        </span>
+      )
     }
-    // Handle inline code
-    const codeParts = part.split(/(`[^`]+`)/g)
-    return codeParts.map((cp, j) => {
-      if (cp.startsWith('`') && cp.endsWith('`')) {
-        return <code key={`${i}-${j}`} className="bg-muted px-1 py-0.5 rounded text-sm">{cp.slice(1, -1)}</code>
-      }
-      return cp
-    })
+    return part
   })
 }

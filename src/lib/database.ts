@@ -57,7 +57,9 @@ export async function saveConversations(conversations: Conversation[]): Promise<
 }
 
 export async function loadConversations(): Promise<Conversation[]> {
+  console.log('loadConversations: Opening database...')
   const db = await openDB()
+  console.log('loadConversations: Database opened, loading data...')
   
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readonly')
@@ -66,6 +68,7 @@ export async function loadConversations(): Promise<Conversation[]> {
     
     request.onsuccess = () => {
       const data = request.result || []
+      console.log('loadConversations: Raw data count:', data.length)
       // Convert date strings back to Date objects and ensure teacher field exists
       const conversations = data.map((c: Conversation & { createTime: string }) => {
         const conv = {
@@ -78,10 +81,14 @@ export async function loadConversations(): Promise<Conversation[]> {
         }
         return conv
       })
+      console.log('loadConversations: Returning', conversations.length, 'conversations')
       resolve(conversations)
     }
     
-    request.onerror = () => reject(request.error)
+    request.onerror = () => {
+      console.error('loadConversations: Error:', request.error)
+      reject(request.error)
+    }
   })
 }
 

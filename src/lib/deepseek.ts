@@ -6,10 +6,11 @@ const DEFAULT_SYSTEM_PROMPT = `Du är en hjälpsam assistent som svarar baserat 
 
 Regler:
 - Svara endast med information från den givna kontexten
-- Citera källor med konversationens titel och ett kort relevant citat
+- När du citerar en källa, använd formatet: (Namn, från konversation X [ID:xxx]) där ID är det exakta ID:t från konversationsrubriken
 - Om frågan inte kan besvaras från kontexten, säg det tydligt
 - Var koncis men informativ
-- Använd markdown-formatering för tydlighet`
+- Använd markdown-formatering för tydlighet
+- Inkludera ALLTID [ID:xxx] i dina källhänvisningar så användaren kan klicka på dem`
 
 export interface AISource {
   id: string
@@ -95,10 +96,9 @@ function buildContext(sources: AISource[], conversations: Conversation[]): strin
   return sources.map((source, index) => {
     const conversation = conversations.find(c => c.id === source.id)
     if (!conversation) return ''
-    
-    // Take first 4000 characters of markdown
     const content = conversation.markdown.slice(0, 4000)
-    return `--- Konversation ${index + 1}: "${source.title}" ---\n${content}\n`
+    // Include the conversation ID in brackets so it can be parsed later
+    return `--- Konversation ${index + 1} [ID:${source.id}]: "${source.title}" ---\n${content}\n`
   }).join('\n\n')
 }
 

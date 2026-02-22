@@ -1,5 +1,85 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware'
+
+// IndexedDB storage for reliable persistence
+const DB_NAME = 'BookChaptersDB'
+const DB_VERSION = 1
+const STORE_NAME = 'storage'
+
+const indexedDBStorage: StateStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      request.onerror = () => resolve(null)
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME)
+        }
+      }
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        try {
+          const transaction = db.transaction(STORE_NAME, 'readonly')
+          const store = transaction.objectStore(STORE_NAME)
+          const getRequest = store.get(name)
+          getRequest.onsuccess = () => {
+            console.log('BookChapters loaded from IndexedDB:', name, getRequest.result ? 'found' : 'empty')
+            resolve(getRequest.result || null)
+          }
+          getRequest.onerror = () => resolve(null)
+        } catch (e) {
+          resolve(null)
+        }
+      }
+    })
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    return new Promise((resolve) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      request.onerror = () => resolve()
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME)
+        }
+      }
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        try {
+          const transaction = db.transaction(STORE_NAME, 'readwrite')
+          const store = transaction.objectStore(STORE_NAME)
+          store.put(value, name)
+          transaction.oncomplete = () => {
+            console.log('BookChapters saved to IndexedDB:', name)
+            resolve()
+          }
+          transaction.onerror = () => resolve()
+        } catch (e) {
+          resolve()
+        }
+      }
+    })
+  },
+  removeItem: async (name: string): Promise<void> => {
+    return new Promise((resolve) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      request.onerror = () => resolve()
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        try {
+          const transaction = db.transaction(STORE_NAME, 'readwrite')
+          const store = transaction.objectStore(STORE_NAME)
+          store.delete(name)
+          transaction.oncomplete = () => resolve()
+          transaction.onerror = () => resolve()
+        } catch (e) {
+          resolve()
+        }
+      }
+    })
+  },
+}
 
 export interface BookChapter {
   id: string
@@ -75,6 +155,7 @@ export const useBookChapterStore = create<BookChapterState>()(
     }),
     {
       name: 'book-chapters-storage',
+      storage: createJSONStorage(() => indexedDBStorage),
       onRehydrateStorage: () => (state) => {
         if (state?.chapters) {
           state.chapters = state.chapters.map(ch => ({

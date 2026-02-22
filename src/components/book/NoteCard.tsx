@@ -13,8 +13,24 @@ import {
 } from '@/components/ui/select'
 import { useBookNoteStore, type BookNote, type NoteStatus } from '@/store/bookNoteStore'
 import { useBookChapterStore } from '@/store/bookChapterStore'
+import { useConversationStore } from '@/store/conversationStore'
 
-function FormattedNoteText({ text }: { text: string }) {
+interface FormattedNoteTextProps {
+  text: string
+  onNavigateToSource?: (conversationId: string) => void
+  noteSourceId?: string | null
+}
+
+function FormattedNoteText({ text, onNavigateToSource, noteSourceId }: FormattedNoteTextProps) {
+  const { conversations } = useConversationStore()
+  
+  // Function to find conversation ID by title
+  const findConversationByTitle = (title: string): string | null => {
+    const normalized = title.toLowerCase().trim()
+    const conv = conversations.find(c => c.title.toLowerCase().includes(normalized) || normalized.includes(c.title.toLowerCase()))
+    return conv?.id || null
+  }
+  
   const formatted = useMemo(() => {
     const lines = text.split('\n')
     const elements: React.ReactNode[] = []
@@ -34,7 +50,7 @@ function FormattedNoteText({ text }: { text: string }) {
         if (match) {
           elements.push(
             <p key={index} className="font-semibold mt-3 mb-1">
-              {match[1]} {renderInlineFormatting(match[2])}
+              {match[1]} {renderInlineFormatting(match[2], onNavigateToSource, noteSourceId, findConversationByTitle)}
             </p>
           )
           return
@@ -45,17 +61,18 @@ function FormattedNoteText({ text }: { text: string }) {
       if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
         elements.push(
           <li key={index} className="ml-4 mb-1">
-            {renderInlineFormatting(trimmed.slice(2))}
+            {renderInlineFormatting(trimmed.slice(2), onNavigateToSource, noteSourceId, findConversationByTitle)}
           </li>
         )
         return
       }
       
-      // Quote lines (starting with *)
-      if (trimmed.startsWith('*') && !trimmed.startsWith('**')) {
+      // Quote lines (starting with > or *)
+      if (trimmed.startsWith('>') || (trimmed.startsWith('*') && !trimmed.startsWith('**'))) {
+        const quoteText = trimmed.startsWith('>') ? trimmed.slice(1).trim() : trimmed
         elements.push(
           <p key={index} className="italic text-muted-foreground mb-1">
-            {renderInlineFormatting(trimmed)}
+            {renderInlineFormatting(quoteText, onNavigateToSource, noteSourceId, findConversationByTitle)}
           </p>
         )
         return
@@ -64,32 +81,74 @@ function FormattedNoteText({ text }: { text: string }) {
       // Regular paragraph
       elements.push(
         <p key={index} className="mb-2">
-          {renderInlineFormatting(trimmed)}
+          {renderInlineFormatting(trimmed, onNavigateToSource, noteSourceId, findConversationByTitle)}
         </p>
       )
     })
     
     return elements
-  }, [text])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, onNavigateToSource, noteSourceId, conversations])
   
   return <>{formatted}</>
 }
 
-function renderInlineFormatting(text: string): React.ReactNode {
-  // Handle bold text (**text**)
-  const parts = text.split(/(\*\*[^*]+\*\*)/g)
-  return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="text-purple-300">{part.slice(2, -2)}</strong>
-    }
-    // Handle italic (*text*)
-    const italicParts = part.split(/(\*[^*]+\*)/g)
-    return italicParts.map((ip, j) => {
-      if (ip.startsWith('*') && ip.endsWith('*') && ip.length > 2) {
-        return <em key={`${i}-${j}`}>{ip.slice(1, -1)}</em>
+function renderInlineFormatting(
+  text: string, 
+  onNavigateToSource?: (conversationId: string) => void, 
+  noteSourceId?: string | null,
+  findConversationByTitle?: (title: string) => string | null
+): React.ReactNode {
+  // Clean the text of markdown asterisks for display
+  const cleanedText = text
+    .replace(/^\*+\s*/, '')
+    .replace(/\s*\*+$/, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+  
+  // Match ANY parenthetical reference that looks like a source: (från ...) or (Name, från ...)
+  const refPattern = /(\([^)]*från[^)]+\))/gi
+  const refParts = cleanedText.split(refPattern)
+  
+  return refParts.map((segment, segIndex) => {
+    // Check if this segment is a source reference (contains "från")
+    if (segment.match(/^\([^)]*från[^)]+\)$/i)) {
+      // Try to extract ID from [ID:xxx] format
+      const idMatch = segment.match(/\[ID:([^\]]+)\]/i)
+      
+      // Try to find conversation ID: embedded ID > noteSourceId > search by title
+      let conversationId = idMatch ? idMatch[1] : noteSourceId
+      
+      // If still no ID, try to find by title in the reference
+      if (!conversationId && findConversationByTitle) {
+        // Extract title from reference like "(från Manifestation av cannabis)"
+        const titleMatch = segment.match(/från\s+([^)]+)/i)
+        if (titleMatch) {
+          const title = titleMatch[1].trim()
+          conversationId = findConversationByTitle(title)
+        }
       }
-      return ip
-    })
+      
+      // Clean display text (remove the [ID:xxx] part)
+      const displayText = segment.replace(/\s*\[ID:[^\]]+\]/gi, '')
+      
+      // Make it clickable if we have a handler and ID
+      if (onNavigateToSource && conversationId) {
+        return (
+          <button
+            key={segIndex}
+            onClick={() => onNavigateToSource(conversationId!)}
+            className="text-purple-400 hover:text-purple-300 hover:underline text-xs cursor-pointer"
+          >
+            {displayText} →
+          </button>
+        )
+      }
+      return <span key={segIndex} className="text-muted-foreground text-xs">{displayText}</span>
+    }
+    
+    // Regular text
+    return <span key={segIndex}>{segment}</span>
   })
 }
 
@@ -199,7 +258,7 @@ export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCard
             ) : (
               <>
                 <div className="text-sm mb-2 prose prose-sm prose-invert max-w-none">
-                  <FormattedNoteText text={note.text} />
+                  <FormattedNoteText text={note.text} onNavigateToSource={onNavigateToSource} noteSourceId={note.sourceConversationId} />
                 </div>
                 
                 {note.comment && (
