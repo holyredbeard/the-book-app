@@ -156,6 +156,8 @@ interface NoteCardProps {
   note: BookNote
   onNavigateToSource?: (conversationId: string) => void
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>
+  isSelected?: boolean
+  onSelectToggle?: () => void
 }
 
 const STATUS_CONFIG: Record<NoteStatus, { label: string; className: string; icon: React.ReactNode }> = {
@@ -176,7 +178,7 @@ const STATUS_CONFIG: Record<NoteStatus, { label: string; className: string; icon
   },
 }
 
-export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCardProps) {
+export function NoteCard({ note, onNavigateToSource, dragHandleProps, isSelected, onSelectToggle }: NoteCardProps) {
   const { updateNote, updateNoteStatus, deleteNote, moveNotesToChapter } = useBookNoteStore()
   const { chapters } = useBookChapterStore()
   const [isEditing, setIsEditing] = useState(false)
@@ -219,13 +221,34 @@ export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCard
   }
 
   return (
-    <Card className="group relative">
+    <Card 
+      className={`group relative cursor-pointer transition-all ${
+        isSelected 
+          ? 'ring-2 ring-purple-500 bg-purple-500/5' 
+          : 'hover:bg-accent/30'
+      }`}
+      onClick={onSelectToggle}
+    >
       <CardContent className="p-4">
         <div className="flex gap-3">
+          {/* Selection indicator */}
+          <div className="flex items-center">
+            <div className={`w-4 h-4 rounded border-2 transition-colors ${
+              isSelected 
+                ? 'bg-purple-500 border-purple-500' 
+                : 'border-muted-foreground'
+            }`}>
+              {isSelected && (
+                <Check className="w-3 h-3 text-white" />
+              )}
+            </div>
+          </div>
+
           {/* Drag handle */}
           <div
             {...dragHandleProps}
             className="flex items-center cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-50 transition-opacity"
+            onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-5 w-5 text-muted-foreground" />
           </div>
@@ -270,7 +293,10 @@ export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCard
                 {/* Source link */}
                 {note.sourceConversationTitle && note.sourceConversationId && (
                   <button
-                    onClick={() => onNavigateToSource?.(note.sourceConversationId!)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onNavigateToSource?.(note.sourceConversationId!)
+                    }}
                     className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mb-3"
                   >
                     <ExternalLink className="h-3 w-3" />
@@ -283,7 +309,10 @@ export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCard
                   {/* Status badge - clickable to cycle */}
                   <Badge
                     className={`cursor-pointer gap-1 ${statusConfig.className}`}
-                    onClick={handleStatusCycle}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleStatusCycle()
+                    }}
                   >
                     {statusConfig.icon}
                     {statusConfig.label}
@@ -294,7 +323,10 @@ export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCard
                       size="sm"
                       variant="ghost"
                       className="h-7 text-xs text-green-400 hover:text-green-300"
-                      onClick={handleMarkAsUsed}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleMarkAsUsed()
+                      }}
                     >
                       <Check className="h-3 w-3 mr-1" />
                       Markera använd
@@ -325,7 +357,10 @@ export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCard
                       size="sm"
                       variant="ghost"
                       className="h-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => setIsMoving(true)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setIsMoving(true)
+                      }}
                       title="Flytta till annat kapitel"
                     >
                       <FolderInput className="h-3 w-3" />
@@ -336,7 +371,10 @@ export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCard
                     size="sm"
                     variant="ghost"
                     className="h-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => setIsEditing(true)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsEditing(true)
+                    }}
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
@@ -345,7 +383,10 @@ export function NoteCard({ note, onNavigateToSource, dragHandleProps }: NoteCard
                     size="sm"
                     variant="ghost"
                     className="h-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => deleteNote(note.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteNote(note.id)
+                    }}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>

@@ -108,6 +108,7 @@ export interface BookNote {
 
 interface BookNoteState {
   notes: BookNote[]
+  selectedNoteIds: Set<string>
   
   addNote: (params: {
     text: string
@@ -124,6 +125,12 @@ interface BookNoteState {
   reorderNotes: (chapterId: string | null, notes: BookNote[]) => void
   moveNotesToChapter: (noteIds: string[], targetChapterId: string | null) => void
   getNotesForChapter: (chapterId: string | null) => BookNote[]
+  
+  // Multi-select actions
+  toggleNoteSelection: (id: string) => void
+  selectAllNotes: (chapterId: string | null) => void
+  clearSelection: () => void
+  getSelectedNotes: () => BookNote[]
 }
 
 function generateId(): string {
@@ -138,6 +145,7 @@ export const useBookNoteStore = create<BookNoteState>()(
   persist(
     (set, get) => ({
       notes: [],
+      selectedNoteIds: new Set<string>(),
 
       addNote: (params) => {
         const notes = get().notes
@@ -238,10 +246,41 @@ export const useBookNoteStore = create<BookNoteState>()(
           .filter(n => n.chapterId === chapterId)
           .sort((a, b) => a.order - b.order)
       },
+
+      // Multi-select actions
+      toggleNoteSelection: (id) => {
+        const { selectedNoteIds } = get()
+        const newSelection = new Set(selectedNoteIds)
+        if (newSelection.has(id)) {
+          newSelection.delete(id)
+        } else {
+          newSelection.add(id)
+        }
+        set({ selectedNoteIds: newSelection })
+      },
+
+      selectAllNotes: (chapterId) => {
+        const notes = get().notes.filter(n => n.chapterId === chapterId)
+        const newSelection = new Set(notes.map(n => n.id))
+        set({ selectedNoteIds: newSelection })
+      },
+
+      clearSelection: () => {
+        set({ selectedNoteIds: new Set<string>() })
+      },
+
+      getSelectedNotes: () => {
+        const { notes, selectedNoteIds } = get()
+        return notes.filter(n => selectedNoteIds.has(n.id))
+      },
     }),
     {
       name: 'book-notes-storage',
       storage: createJSONStorage(() => indexedDBStorage),
+      partialize: (state) => ({
+        notes: state.notes,
+        // Don't persist selectedNoteIds - it's temporary UI state
+      }),
       onRehydrateStorage: () => (state) => {
         if (state?.notes) {
           state.notes = state.notes.map(note => ({
@@ -249,6 +288,9 @@ export const useBookNoteStore = create<BookNoteState>()(
             createdAt: new Date(note.createdAt),
             updatedAt: new Date(note.updatedAt),
           }))
+        }
+        if (state) {
+          state.selectedNoteIds = new Set<string>()
         }
       },
     }
